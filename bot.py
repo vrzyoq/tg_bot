@@ -83,7 +83,7 @@ async def stats(message: Message):
     s = diff % 60
 
     text = (
-        f"<i><b>Стата</b></i>\n\n"
+        f"<i><b>Стата ,ky</b></i>\n\n"
         f"<i><b>Айди: <code>{message.from_user.id}</code></b></i>\n"
         f"<i><b>Баланс: <code>{balance}€</code></b></i>\n"
         f"<i><b>Выполнено задач: {tasks_done}</b></i>\n\n"
