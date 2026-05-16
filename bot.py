@@ -15,7 +15,7 @@ import time
 
 START_TIME = time.time()
 
-TOKEN = "7084873915:AAEysVk7UqFtsHkH9o1aP1YRHGfpxjDfIcw"
+TOKEN = "8659488491:AAHtox0dfVPVCzPOxNHCTDiQbcUcBbM0MRE"
 owner_id = 6563619324
 spotify_client_id = "e9cdced40fc8432ea92dbe5f3d65492a"
 spotify_client_secret = "e04f6b59641b4dbea504d61fb778bbde"
