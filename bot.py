@@ -29,6 +29,18 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 
+def count_workdays(start_date: datetime, end_date: datetime) -> int:
+    days = 0
+    current = start_date
+
+    while current.date() < end_date.date():
+        # weekday(): 0 = Monday, 6 = Sunday
+        if current.weekday() < 5:  # Пн–Пт
+            days += 1
+        current += timedelta(days=1)
+
+    return days
+
 class OwnerMiddleware(BaseMiddleware):
     async def __call__(self, handler, event: TelegramObject, data):
 
@@ -113,7 +125,7 @@ async def stats(message: Message):
                 day=salary_day
             )
 
-    days_left = (next_salary.date() - now.date()).days
+    days_left = count_workdays(now, next_salary)
 
     text = (
         f"<i><b>Стата</b></i>\n\n"
