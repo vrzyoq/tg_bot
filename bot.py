@@ -58,6 +58,13 @@ async def start(message: Message):
 
 # ====== ГЛАВНОЕ МЕНЮ ======
 
+@dp.message()
+async def catch_all(message: Message, state: FSMContext):
+    current = await state.get_state()
+
+    if current:
+        await message.answer("Вы сейчас в процессе ввода. Завершите действие.")
+
 @dp.message(F.text == "/Финансы")
 async def salary(message: Message):
     await message.answer(
@@ -128,11 +135,17 @@ async def add_salary(message: Message, state: FSMContext):
 
 @dp.message(SalaryState.add_amount)
 async def save_salary_amount(message: Message, state: FSMContext):
-    await state.update_data(amount=float(message.text))
 
-    await message.answer("<i><b>Введите причину пополнения:</b></i>")
+    try:
+        amount = float(message.text)
+    except:
+        await message.answer("<b>Введите число, например: 100</b>")
+        return
+
+    await state.update_data(amount=amount)
+
+    await message.answer("<b>Введите причину пополнения:</b>")
     await state.set_state(SalaryState.add_reason)
-
 
 @dp.message(SalaryState.add_reason)
 async def save_salary_reason(message: Message, state: FSMContext):
@@ -160,11 +173,17 @@ async def minus_salary(message: Message, state: FSMContext):
 
 @dp.message(SalaryState.minus_amount)
 async def minus_salary_amount(message: Message, state: FSMContext):
-    await state.update_data(amount=float(message.text))
 
-    await message.answer("<i><b>Введите причину снятия:</b></i>")
+    try:
+        amount = float(message.text)
+    except:
+        await message.answer("<b>Введите число, например: 50</b>")
+        return
+
+    await state.update_data(amount=amount)
+
+    await message.answer("<b>Введите причину снятия:</b>")
     await state.set_state(SalaryState.minus_reason)
-
 
 @dp.message(SalaryState.minus_reason)
 async def minus_salary_reason(message: Message, state: FSMContext):
