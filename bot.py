@@ -11,9 +11,13 @@ from keyboards import main_menu, salary_menu, tasks_menu
 from states import SalaryState, TaskState
 from database import *
 
+from datetime import datetime, timedelta
+
 import time
 
 START_TIME = time.time()
+
+
 
 TOKEN = "8659488491:AAHtox0dfVPVCzPOxNHCTDiQbcUcBbM0MRE"
 owner_id = 6563619324
@@ -82,11 +86,34 @@ async def stats(message: Message):
     m = (diff % 3600) // 60
     s = diff % 60
 
+    now = datetime.now()
+
+    salary_day = 15
+
+    if now.day < salary_day:
+        next_salary = now.replace(day=salary_day)
+    else:
+        # следующий месяц
+        if now.month == 12:
+            next_salary = now.replace(
+                year=now.year + 1,
+                month=1,
+                day=salary_day
+            )
+        else:
+            next_salary = now.replace(
+                month=now.month + 1,
+                day=salary_day
+            )
+
+    days_left = (next_salary.date() - now.date()).days
+
     text = (
         f"<i><b>Стата</b></i>\n\n"
         f"<i><b>Айди: <code>{message.from_user.id}</code></b></i>\n"
         f"<i><b>Баланс: <code>{balance}€</code></b></i>\n"
-        f"<i><b>Выполнено задач: {tasks_done}</b></i>\n\n"
+        f"<i><b>Выполнено задач: {tasks_done}</b></i>\n"
+        f"<i><b>Дней до зарплаты: {days_left}</b></i>\n\n"
         f"<i><b>Аптайм: {d}д {h}ч {m}м {s}с</b></i>"
     )
 
@@ -100,15 +127,30 @@ async def add_salary(message: Message, state: FSMContext):
     await state.set_state(SalaryState.add_amount)
 
 @dp.message(SalaryState.add_amount)
-async def save_salary(message: Message, state: FSMContext):
-    amount = float(message.text)
+async def save_salary_amount(message: Message, state: FSMContext):
+    await state.update_data(amount=float(message.text))
+
+    await message.answer("<i><b>Введите причину пополнения:</b></i>")
+    await state.set_state(SalaryState.add_reason)
+
+
+@dp.message(SalaryState.add_reason)
+async def save_salary_reason(message: Message, state: FSMContext):
+    data = await state.get_data()
+
+    amount = data["amount"]
+    reason = message.text
 
     await add_income(
         user_id=message.from_user.id,
         amount=amount
     )
 
-    await message.answer(f"<i><b>Добавлено: {amount}€</b></i>")
+    await message.answer(
+        f"<i><b>Добавлено: {amount}€</b></i>\n"
+        f"<i><b>Причина:</b> {reason}</i>"
+    )
+
     await state.clear()
 
 @dp.message(F.text == "/минус")
@@ -117,8 +159,19 @@ async def minus_salary(message: Message, state: FSMContext):
     await state.set_state(SalaryState.minus_amount)
 
 @dp.message(SalaryState.minus_amount)
-async def minus_salary(message: Message, state: FSMContext):
-    amount = float(message.text)
+async def minus_salary_amount(message: Message, state: FSMContext):
+    await state.update_data(amount=float(message.text))
+
+    await message.answer("<i><b>Введите причину снятия:</b></i>")
+    await state.set_state(SalaryState.minus_reason)
+
+
+@dp.message(SalaryState.minus_reason)
+async def minus_salary_reason(message: Message, state: FSMContext):
+    data = await state.get_data()
+
+    amount = data["amount"]
+    reason = message.text
 
     success = await minus_income(
         user_id=message.from_user.id,
@@ -126,9 +179,13 @@ async def minus_salary(message: Message, state: FSMContext):
     )
 
     if success:
-        await message.answer(f"<i><b>Списано {amount}€</b></i>")
+        await message.answer(
+            f"<i><b>Списано: {amount}€</b></i>\n"
+            f"<i><b>Причина:</b> {reason}</i>"
+        )
     else:
         await message.answer("<i><b>Недостаточно средств</b></i>")
+
     await state.clear()
 
 @dp.message(F.text == "/бал")
