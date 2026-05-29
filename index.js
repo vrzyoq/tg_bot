@@ -1,13 +1,23 @@
 require("dotenv").config()
 
 const { Telegraf, Markup, session, Scenes } = require("telegraf")
-const Database = require("better-sqlite3")
+const sqlite3 = require("sqlite3").verbose()
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 const OWNER_ID = Number(process.env.OWNER_ID)
-const db = new Database("database.db")
 
-// Сцены для добавления и вычитания
+const db = new sqlite3.Database("./database.db")
+
+// Создание таблицы
+db.run(`
+CREATE TABLE IF NOT EXISTS income (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    amount REAL
+)
+`)
+
+// Сцены
 const minusScene = new Scenes.BaseScene("minus_scene")
 const plusScene = new Scenes.BaseScene("plus_scene")
 
@@ -18,44 +28,52 @@ bot.use(stage.middleware())
 
 const START_TIME = Date.now()
 
-db.prepare(`
-CREATE TABLE IF NOT EXISTS income (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    amount REAL
-)
-`).run()
-
 function reply(ctx, text, extra = {}) {
-
     return ctx.reply(text, {
         parse_mode: "HTML",
         ...extra
     })
 }
 
+// Получение баланса
 function getBalance(userId) {
+    return new Promise((resolve, reject) => {
 
-    const row = db.prepare(`
-        SELECT SUM(amount) as balance
-        FROM income
-        WHERE user_id = ?
-    `).get(userId)
+        db.get(
+            `
+            SELECT SUM(amount) as balance
+            FROM income
+            WHERE user_id = ?
+            `,
+            [userId],
+            (err, row) => {
 
-    return row.balance || 0
+                if (err) {
+                    reject(err)
+                } else {
+                    resolve(row?.balance || 0)
+                }
+            }
+        )
+    })
 }
 
+// Добавление денег
 function addIncome(userId, amount) {
 
-    db.prepare(`
+    db.run(
+        `
         INSERT INTO income (user_id, amount)
         VALUES (?, ?)
-    `).run(userId, amount)
+        `,
+        [userId, amount]
+    )
 }
 
-function minusIncome(userId, amount) {
+// Списание денег
+async function minusIncome(userId, amount) {
 
-    const balance = getBalance(userId)
+    const balance = await getBalance(userId)
 
     if (balance < amount) {
         return false
@@ -66,33 +84,45 @@ function minusIncome(userId, amount) {
     return true
 }
 
-plusScene.on("text", (ctx) => {
+// Плюс
+plusScene.on("text", async (ctx) => {
+
     const amount = Number(ctx.message.text)
 
     if (isNaN(amount)) {
-        return reply(ctx, "<i><b>Пожалуйста, введите корректное число.</b></i>")
+        return reply(ctx, "<i><b>Введите корректное число.</b></i>")
     }
 
     addIncome(ctx.from.id, amount)
-    reply(ctx, `<i><b>Добавлено <code>${amount}€</code></b></i>`)
+
+    await reply(
+        ctx,
+        `<i><b>Добавлено <code>${amount}€</code></b></i>`
+    )
 
     return ctx.scene.leave()
 })
 
-minusScene.on("text", (ctx) => {
+// Минус
+minusScene.on("text", async (ctx) => {
+
     const amount = Number(ctx.message.text)
 
     if (isNaN(amount)) {
-        return reply(ctx, "<i><b>Пожалуйста, введите корректное число.</b></i>")
+        return reply(ctx, "<i><b>Введите корректное число.</b></i>")
     }
 
-    const success = minusIncome(ctx.from.id, amount)
+    const success =
+        await minusIncome(ctx.from.id, amount)
 
     if (!success) {
         return reply(ctx, "<i><b>Недостаточно средств.</b></i>")
     }
 
-    reply(ctx, `<i><b>Списано <code>${amount}€</code></b></i>`)
+    await reply(
+        ctx,
+        `<i><b>Списано <code>${amount}€</code></b></i>`
+    )
 
     return ctx.scene.leave()
 })
@@ -107,46 +137,35 @@ const financeMenu = Markup.keyboard([
     ["/назад"]
 ]).resize()
 
+// Защита
 bot.use(async (ctx, next) => {
 
     if (!ctx.from) return
 
     if (ctx.from.id !== OWNER_ID) {
-        return reply(ctx, "<i><b>У вас нет доступа к этому боту.</b></i>")
+        return reply(
+            ctx,
+            "<i><b>Нет доступа.</b></i>"
+        )
     }
 
-    next()
+    return next()
 })
 
 bot.start((ctx) => {
     reply(ctx, "<i><b>Hi</b></i>", mainMenu)
 })
 
-bot.help((ctx) => {
-    reply(ctx, "Available commands:\n/start - Start the bot\n/help - Show this help message")
-})
-
 bot.hears("/финансы", (ctx) => {
     reply(ctx, "<i><b>Выберите действие:</b></i>", financeMenu)
 })
 
-bot.hears("/общее", (ctx) => {
-    const balance = getBalance(ctx.from.id)
-
-    const diff =
-        Math.floor(
-            (Date.now() - START_TIME) / 1000
-        )
-
-    const h = Math.floor(diff / 3600)
-    const m = Math.floor((diff % 3600) / 60)
-    const s = diff % 60
-
-    reply(ctx, `<i><b>profile</b></i>\n\n<i><b>баланс: <code>${balance}€</code></b></i>\n<i><b>айди: <code>${ctx.from.id}</code></b></i>\n<i><b>аптайм бота: <code>${h}ч ${m}м ${s}с</code></b></i>`)
-})
-
 bot.hears("/назад", (ctx) => {
-    reply(ctx, "<i><b>Вы вернулись в главное меню.</b></i>", mainMenu)
+    reply(
+        ctx,
+        "<i><b>Главное меню.</b></i>",
+        mainMenu
+    )
 })
 
 bot.hears("/плюс", (ctx) => {
@@ -163,54 +182,96 @@ bot.hears("/минус", (ctx) => {
     reply(ctx, "<i><b>Введите сумму:</b></i>")
 })
 
-bot.hears("/баланс", (ctx) => {
+bot.hears("/баланс", async (ctx) => {
 
-    const balance = getBalance(ctx.from.id)
+    const balance =
+        await getBalance(ctx.from.id)
 
-    reply(ctx, `<i><b>Ваш баланс: <code>${balance}€</code></b></i>`)
+    reply(
+        ctx,
+        `<i><b>Баланс: <code>${balance}€</code></b></i>`
+    )
 })
 
-bot.on("text", (ctx) => {
+function getDaysToSalary() {
 
-    const action = ctx.session.action
+    const now = new Date()
 
-    if (!ctx.session.action) {
-        return reply(ctx, "<i><b>Пожалуйста, выберите действие из меню.</b></i>")
+    let salaryDate =
+        new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            15
+        )
+
+    // Если 15-е прошло — следующий месяц
+    if (now > salaryDate) {
+
+        salaryDate =
+            new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                15
+            )
     }
 
-    if (action === "add_income") {
+    let workDays = 0
 
-        const amount = Number(ctx.message.text)
+    const current =
+        new Date(now)
 
-        addIncome(ctx.from.id, amount)
+    current.setHours(0, 0, 0, 0)
+    salaryDate.setHours(0, 0, 0, 0)
 
-        reply(ctx, `<i><b>Добавлено <code>${amount}€</code></b></i>`)
+    while (current < salaryDate) {
 
-        ctx.session.action = null
-    }
+        current.setDate(current.getDate() + 1)
 
-    else if (action === "minus_income") {
+        const day = current.getDay()
 
-        const amount = Number(ctx.message.text)
-
-        const success =
-            minusIncome(ctx.from.id, amount)
-
-        if (!success) {
-            return reply(ctx, "<i><b>Недостаточно средств.</b></i>")
+        // 0 = воскресенье
+        // 6 = суббота
+        if (day !== 0 && day !== 6) {
+            workDays++
         }
-
-        reply(ctx, `<i><b>Списано <code>${amount}€</code></b></i>`)
-
-        ctx.session.action = null
     }
 
-})
+    return workDays
+}
 
+bot.hears("/общее", async (ctx) => {
+
+    const balance =
+        await getBalance(ctx.from.id)
+
+    const diff =
+        Math.floor(
+            (Date.now() - START_TIME) / 1000
+        )
+
+    const h = Math.floor(diff / 3600)
+    const m = Math.floor((diff % 3600) / 60)
+    const s = diff % 60
+
+    const daysToSalary = getDaysToSalary()
+
+    reply(
+        ctx,
+        `<i><b>profile</b></i>\n\n` +
+        `<i><b>баланс: <code>${balance}€</code></b></i>\n` +
+        `<i><b>айди: <code>${ctx.from.id}</code></b></i>\n` +
+        `<i><b>до зарплаты: <code>${daysToSalary} д.</code></b></i>\n` +
+        `<i><b>аптайм: <code>${h}ч ${m}м ${s}с</code></b></i>`
+    )
+})
 
 bot.launch()
-.then(() => console.log('Bot is running...'))
-.catch(err => console.error('Failed to launch bot:', err));
+    .then(() => {
+        console.log("Bot is running...")
+    })
+    .catch((err) => {
+        console.error(err)
+    })
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once("SIGINT", () => bot.stop("SIGINT"))
+process.once("SIGTERM", () => bot.stop("SIGTERM"))
