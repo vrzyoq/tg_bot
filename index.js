@@ -2,20 +2,14 @@ require("dotenv").config()
 
 const { Telegraf, Markup, session, Scenes } = require("telegraf")
 const sqlite3 = require("sqlite3").verbose()
+const sequelize = require("./database")
+const { User, addBalance, removeBalance } = require("./models/User")
+const { checkSite } = require("./services/siteMonitor")
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 const OWNER_ID = Number(process.env.OWNER_ID)
 
-const db = new sqlite3.Database("./database.db")
-
-// Создание таблицы
-db.run(`
-CREATE TABLE IF NOT EXISTS income (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    amount REAL
-)
-`)
+const SITE_URL = "https://www.libert117.com"
 
 // Сцены
 const minusScene = new Scenes.BaseScene("minus_scene")
@@ -35,55 +29,6 @@ function reply(ctx, text, extra = {}) {
     })
 }
 
-// Получение баланса
-function getBalance(userId) {
-    return new Promise((resolve, reject) => {
-
-        db.get(
-            `
-            SELECT SUM(amount) as balance
-            FROM income
-            WHERE user_id = ?
-            `,
-            [userId],
-            (err, row) => {
-
-                if (err) {
-                    reject(err)
-                } else {
-                    resolve(row?.balance || 0)
-                }
-            }
-        )
-    })
-}
-
-// Добавление денег
-function addIncome(userId, amount) {
-
-    db.run(
-        `
-        INSERT INTO income (user_id, amount)
-        VALUES (?, ?)
-        `,
-        [userId, amount]
-    )
-}
-
-// Списание денег
-async function minusIncome(userId, amount) {
-
-    const balance = await getBalance(userId)
-
-    if (balance < amount) {
-        return false
-    }
-
-    addIncome(userId, -amount)
-
-    return true
-}
-
 // Плюс
 plusScene.on("text", async (ctx) => {
 
@@ -93,7 +38,7 @@ plusScene.on("text", async (ctx) => {
         return reply(ctx, "<i><b>Введите корректное число.</b></i>")
     }
 
-    addIncome(ctx.from.id, amount)
+    await addBalance(ctx.from.id, amount)
 
     await reply(
         ctx,
@@ -112,12 +57,7 @@ minusScene.on("text", async (ctx) => {
         return reply(ctx, "<i><b>Введите корректное число.</b></i>")
     }
 
-    const success =
-        await minusIncome(ctx.from.id, amount)
-
-    if (!success) {
-        return reply(ctx, "<i><b>Недостаточно средств.</b></i>")
-    }
+    await removeBalance(ctx.from.id, amount)
 
     await reply(
         ctx,
@@ -128,12 +68,18 @@ minusScene.on("text", async (ctx) => {
 })
 
 const mainMenu = Markup.keyboard([
-    ["/финансы", "/общее"]
+    ["/финансы", "/общее"],
+    ["/мониторинг"]
 ]).resize()
 
 const financeMenu = Markup.keyboard([
     ["/плюс", "/минус"],
     ["/баланс"],
+    ["/назад"]
+]).resize()
+
+const monitorMenu = Markup.keyboard([
+    ["/сайт", "/сервер"],
     ["/назад"]
 ]).resize()
 
@@ -160,12 +106,37 @@ bot.hears("/финансы", (ctx) => {
     reply(ctx, "<i><b>Выберите действие:</b></i>", financeMenu)
 })
 
+bot.hears("/мониторинг", (ctx) => {
+    reply(ctx, "<i><b>Выберите действие:</b></i>", monitorMenu)
+})
+
 bot.hears("/назад", (ctx) => {
     reply(
         ctx,
         "<i><b>Главное меню.</b></i>",
         mainMenu
     )
+})
+
+bot.hears("/сайт", async (ctx) => {
+
+    const result =
+        await checkSite(
+            SITE_URL
+        )
+
+    if (!result.online) {
+
+        return reply(ctx, `<i><b>Сайт недоступен.</b></i>\n<b><i><code>${SITE_URL}</code></i></b>\n\n<code>${result.error}</code>`)
+    }
+
+    let status = "ok."
+
+    if (result.ping > 1000) {
+        status = "ping > 1000ms!"
+    }
+
+    reply(ctx, `<i><b>Сайт работает.</b></i>\n\n<i><b><code>${SITE_URL}</code></b></i>\n\n<i><b>ping: <code>${result.ping}ms</code></b></i>\n<i><b>http: <code>${result.status}</code></b></i>`)
 })
 
 bot.hears("/плюс", (ctx) => {
@@ -185,7 +156,10 @@ bot.hears("/минус", (ctx) => {
 bot.hears("/баланс", async (ctx) => {
 
     const balance =
-        await getBalance(ctx.from.id)
+        await User.findOne({
+            where: { userId: ctx.from.id },
+            attributes: ['balance']
+        })
 
     reply(
         ctx,
@@ -241,17 +215,25 @@ function getDaysToSalary() {
 
 bot.hears("/общее", async (ctx) => {
 
-    const balance =
-        await getBalance(ctx.from.id)
+    const [user] = await User.findOrCreate({
+        where: {
+            userId: ctx.from.id
+        },
+        defaults: {
+            balance: 0
+        }
+    })
+
+    const balance = user.balance
 
     const diff =
         Math.floor(
             (Date.now() - START_TIME) / 1000
         )
 
+    const d = Math.floor(diff / 86400)
     const h = Math.floor(diff / 3600)
     const m = Math.floor((diff % 3600) / 60)
-    const s = diff % 60
 
     const daysToSalary = getDaysToSalary()
 
@@ -261,17 +243,31 @@ bot.hears("/общее", async (ctx) => {
         `<i><b>баланс: <code>${balance}€</code></b></i>\n` +
         `<i><b>айди: <code>${ctx.from.id}</code></b></i>\n` +
         `<i><b>до зарплаты: <code>${daysToSalary} д.</code></b></i>\n` +
-        `<i><b>аптайм: <code>${h}ч ${m}м ${s}с</code></b></i>`
+        `<i><b>аптайм: <code>${d}д. ${h}ч. ${m}м.</code></b></i>`
     )
-})
+});
 
-bot.launch()
-    .then(() => {
-        console.log("Bot is running...")
-    })
-    .catch((err) => {
+async function start() {
+
+    try {
+
+        await sequelize.authenticate()
+
+        await sequelize.sync({ alter: true })
+
+        console.log("Database connected.")
+
+        await bot.launch()
+
+        console.log("Bot started.")
+
+    } catch (err) {
+
         console.error(err)
-    })
+    }
+}
+
+start()
 
 process.once("SIGINT", () => bot.stop("SIGINT"))
 process.once("SIGTERM", () => bot.stop("SIGTERM"))
