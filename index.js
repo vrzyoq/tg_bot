@@ -5,7 +5,7 @@ const { checkSite } = require("./utils/siteMonitor")
 const { reply } = require("./utils/telegram")
 const { registerCommonHandlers } = require("./handlers/common")
 const { registerMonitoringHandlers } = require("./handlers/monitoring")
-const { registerMusicHandlers } = require("./handlers/music")
+// const { registerMusicHandlers } = require("./handlers/music")
 const { registerStartHandlers } = require("./handlers/start")
 const { mainMenu, monitorMenu } = require("./utils/keyboards")
 
@@ -47,7 +47,7 @@ bot.catch((err, ctx) => {
 
 registerMonitoringHandlers(bot, { SITE_URL, checkSite, mainMenu, monitorMenu })
 registerCommonHandlers(bot, { START_TIME })
-registerMusicHandlers(bot, { START_TIME })
+// registerMusicHandlers(bot, { START_TIME })
 registerStartHandlers(bot, { START_TIME })
 
 async function start(attempt = 1) {
