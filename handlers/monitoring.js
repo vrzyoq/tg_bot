@@ -22,7 +22,7 @@ async function getPm2Processes() {
                 }
 
                 const text = processes.map(proc => {
-                    const status = proc.pm2_env.status === "online" ? "✔" : "✖";
+                    const status = proc.pm2_env.status === "online" ? "y" : "n";
                     const uptime = proc.pm2_env.pm_uptime
                         ? Math.floor((Date.now() - proc.pm2_env.pm_uptime) / 1000)
                         : 0;
@@ -30,11 +30,12 @@ async function getPm2Processes() {
                     const d = Math.floor(uptime / 86400);
                     const h = Math.floor((uptime % 86400) / 3600);
                     const m = Math.floor((uptime % 3600) / 60);
+                    const s = Math.floor(uptime % 60);
 
                     return `${status} ${proc.name}
-   Статус: ${proc.pm2_env.status}
-   Рестартов: ${proc.pm2_env.restart_time}
-   Аптайм: ${d}д ${h}ч ${m}м`;
+   статус: ${proc.pm2_env.status}
+   рестартов: ${proc.pm2_env.restart_time}
+   аптайм: ${d}д ${h}ч ${m}м ${s}с`;
                 }).join("\n\n");
 
                 resolve(text);
