@@ -41,7 +41,7 @@ bot.use(async (ctx, next) => {
 bot.catch((err, ctx) => {
     console.error("Bot handler error:", err)
     if (ctx?.reply) {
-        ctx.reply("⚠️ Произошла ошибка. Попробуйте позже.").catch(() => {})
+        ctx.reply("ошибка. попробуй позже.").catch(() => {})
     }
 })
 

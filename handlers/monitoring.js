@@ -1,4 +1,34 @@
 const { reply, sendTyping } = require("../utils/telegram")
+const si = require("systeminformation")
+const { exec } = require("child_process");
+
+function getPm2Processes() {
+    return new Promise((resolve) => {
+        exec("pm2 jlist", (err, stdout) => {
+            if (err) return resolve("PM2 не установлен");
+
+            try {
+                const processes = JSON.parse(stdout);
+
+                if (!processes.length)
+                    return resolve("нет запущенных процессов");
+
+                const text = processes.map(proc => {
+                    const status = proc.pm2_env.status === "online"
+                        ? "✔"
+                        : "✖";
+
+                    return `${status} ${proc.name} (${proc.pm2_env.status})`;
+                }).join("\n");
+
+                resolve(text);
+
+            } catch {
+                resolve("не удалось получить список процессов");
+            }
+        });
+    });
+}
 
 function registerMonitoringHandlers(bot, { SITE_URL, checkSite, mainMenu, monitorMenu }) {
     bot.hears("/мониторинг", async (ctx) => {
@@ -27,8 +57,30 @@ function registerMonitoringHandlers(bot, { SITE_URL, checkSite, mainMenu, monito
 
     bot.hears("/сервер", async (ctx) => {
         await sendTyping(ctx)
-        reply(ctx, "<i><b>В разработке...</b></i>")
-    })
+        const cpu = await si.currentLoad()
+        const mem = await si.mem()
+        const disk = await si.fsSize()
+        const time = await si.time()
+        const pm2 = await getPm2Processes()
+
+        const uptime = time.uptime;
+
+        const days = Math.floor(uptime / 86400);
+        const hours = Math.floor((uptime % 86400) / 3600);
+        const minutes = Math.floor((uptime % 3600) / 60);
+        const seconds = Math.floor(uptime % 60);
+
+        const uptimeText = `${days}д ${hours}ч ${minutes}м ${seconds}с`;
+
+        const text = `<i><b>сервер:</b></i>\n\n` +
+            `<i><b>cpu:</b></i> <code>${cpu.currentLoad.toFixed(2)}%</code>\n` +
+            `<i><b>ram:</b></i> <code>${((mem.active / mem.total) * 100).toFixed(2)}%</code>\n` +
+            `<i><b>disk:</b></i> <code>${disk[0].use.toFixed(2)}%</code>\n` +
+            `<i><b>uptime:</b></i> <code>${uptimeText}</code>\n` +
+            `<i><b>pm2:</b></i>\n<code>${pm2}</code>`
+
+        reply(ctx, text)
+    });
 
     bot.hears("/назад", async (ctx) => {
         await sendTyping(ctx)
