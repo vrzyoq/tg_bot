@@ -8,9 +8,12 @@ const { registerMonitoringHandlers } = require("./handlers/monitoring")
 // const { registerMusicHandlers } = require("./handlers/music")
 const { registerStartHandlers } = require("./handlers/start")
 const { mainMenu, monitorMenu } = require("./utils/keyboards")
+const { registerCHATGPTHandlers } = require('./handlers/gpt')
 
 const BOT_TOKEN = process.env.BOT_TOKEN
-const OWNER_ID = Number(process.env.OWNER_ID)
+const OWNER_IDS = process.env.OWNER_IDS
+    .split(",")
+    .map(id => Number(id.trim()));
 const SITE_URL = process.env.SITE_MONITOR_URL
 
 if (!BOT_TOKEN) {
@@ -24,19 +27,15 @@ const START_TIME = Date.now()
 bot.use(session())
 
 bot.use(async (ctx, next) => {
-    if (!ctx.from) return next()
+    if (!ctx.from) return next();
 
-    if (!Number.isInteger(OWNER_ID)) {
-        return next()
+    if (!OWNER_IDS.includes(ctx.from.id)) {
+        await reply(ctx, "<i><b>Нет доступа.</b></i>");
+        return;
     }
 
-    if (ctx.from.id !== OWNER_ID) {
-        await reply(ctx, "<i><b>Нет доступа.</b></i>")
-        return
-    }
-
-    return next()
-})
+    return next();
+});
 
 bot.catch((err, ctx) => {
     console.error("Bot handler error:", err)
@@ -49,6 +48,7 @@ registerMonitoringHandlers(bot, { SITE_URL, checkSite, mainMenu, monitorMenu })
 registerCommonHandlers(bot, { START_TIME })
 // registerMusicHandlers(bot, { START_TIME })
 registerStartHandlers(bot, { START_TIME })
+registerCHATGPTHandlers(bot, { START_TIME })
 
 async function start(attempt = 1) {
     try {

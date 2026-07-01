@@ -3,7 +3,7 @@ const { Markup } = require("telegraf")
 const mainMenu = Markup.keyboard([
     ["/общее"],
     ["/мониторинг"],
-    // ["/музыка"],
+    ["/чатгпт"],
 ]).resize()
 
 const monitorMenu = Markup.keyboard([

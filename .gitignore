@@ -2,3 +2,4 @@ node_modules
 database.db
 package-lock.json
 package.json
+.env
