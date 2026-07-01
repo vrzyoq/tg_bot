@@ -1,31 +1,44 @@
 const { reply, sendTyping } = require("../utils/telegram")
 const si = require("systeminformation")
 const { exec } = require("child_process");
+const pm2 = require("pm2");
 
-function getPm2Processes() {
+async function getPm2Processes() {
     return new Promise((resolve) => {
-        exec("pm2 jlist", (err, stdout) => {
-            if (err) return resolve("PM2 не установлен");
+        pm2.connect((err) => {
+            if (err) {
+                return resolve("❌ Не удалось подключиться к PM2");
+            }
 
-            try {
-                const processes = JSON.parse(stdout);
+            pm2.list((err, processes) => {
+                pm2.disconnect();
 
-                if (!processes.length)
-                    return resolve("нет запущенных процессов");
+                if (err) {
+                    return resolve("❌ Ошибка получения списка процессов");
+                }
+
+                if (!processes.length) {
+                    return resolve("Нет процессов");
+                }
 
                 const text = processes.map(proc => {
-                    const status = proc.pm2_env.status === "online"
-                        ? "✔"
-                        : "✖";
+                    const status = proc.pm2_env.status === "online" ? "✔" : "✖";
+                    const uptime = proc.pm2_env.pm_uptime
+                        ? Math.floor((Date.now() - proc.pm2_env.pm_uptime) / 1000)
+                        : 0;
 
-                    return `${status} ${proc.name} (${proc.pm2_env.status})`;
-                }).join("\n");
+                    const d = Math.floor(uptime / 86400);
+                    const h = Math.floor((uptime % 86400) / 3600);
+                    const m = Math.floor((uptime % 3600) / 60);
+
+                    return `${status} ${proc.name}
+   Статус: ${proc.pm2_env.status}
+   Рестартов: ${proc.pm2_env.restart_time}
+   Аптайм: ${d}д ${h}ч ${m}м`;
+                }).join("\n\n");
 
                 resolve(text);
-
-            } catch {
-                resolve("не удалось получить список процессов");
-            }
+            });
         });
     });
 }
